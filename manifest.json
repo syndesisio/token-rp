@@ -1,0 +1,13 @@
+{
+    "dependencies": {
+        "github.com/auth0/go-jwt-middleware": {
+            "branch": "master"
+        },
+        "github.com/coreos/go-oidc": {
+            "branch": "master"
+        },
+        "github.com/vulcand/oxy": {
+            "branch": "master"
+        }
+    }
+}

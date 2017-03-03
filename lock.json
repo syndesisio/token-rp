@@ -1,0 +1,84 @@
+{
+    "memo": "df84398e99aa6712c0fbe001d30639480ec660de1150e1351ba743a4c2e56b3c",
+    "projects": [
+        {
+            "name": "github.com/Sirupsen/logrus",
+            "version": "v0.11.4",
+            "revision": "0208149b40d863d2c1a2f8fe5753096a9cf2cc8b",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/auth0/go-jwt-middleware",
+            "branch": "master",
+            "revision": "f3f7de3b9e394e3af3b88e1b9457f6f71d1ae0ac",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/coreos/go-oidc",
+            "branch": "master",
+            "revision": "cf9c3b4fab2871c65040b7a4573b2e2ec1b483bb",
+            "packages": [
+                "http",
+                "jose",
+                "key",
+                "oauth2",
+                "oidc"
+            ]
+        },
+        {
+            "name": "github.com/coreos/pkg",
+            "version": "v3",
+            "revision": "3ac0863d7acf3bc44daf49afef8919af12f704ef",
+            "packages": [
+                "health",
+                "httputil",
+                "timeutil"
+            ]
+        },
+        {
+            "name": "github.com/dgrijalva/jwt-go",
+            "version": "v3.0.0",
+            "revision": "d2709f9f1f31ebcda9651b03077758c1f3a0018c",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/gorilla/context",
+            "version": "v1.1",
+            "revision": "1ea25387ff6f684839d82767c1733ff4d4d15d0a",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/jonboulle/clockwork",
+            "version": "v0.1.0",
+            "revision": "2eee05ed794112d45db504eb05aa693efd2b8b09",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/vulcand/oxy",
+            "branch": "master",
+            "revision": "12aa65630360a8ab1827975bd46491a358094cd9",
+            "packages": [
+                "forward",
+                "utils"
+            ]
+        },
+        {
+            "name": "golang.org/x/sys",
+            "branch": "master",
+            "revision": "76cc09b634294339fa19ec41b5f2a0b3932cea8b",
+            "packages": [
+                "unix"
+            ]
+        }
+    ]
+}
