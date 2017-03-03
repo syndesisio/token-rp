@@ -15,6 +15,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -31,17 +32,22 @@ import (
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/vulcand/oxy/forward"
 
+	"crypto/x509"
+
 	"github.com/redhat-ipaas/token-rp/pkg/version"
 )
 
 var (
-	issuerURLFlag urlFlag
-	proxyURLFlag  urlFlag
-	clientID      string
-	idpAlias      string
-	idpType       string
-
-	versionFlag bool
+	issuerURLFlag      urlFlag
+	proxyURLFlag       urlFlag
+	clientID           string
+	idpAlias           string
+	idpType            string
+	serverCertFile     string
+	serverKeyFile      string
+	insecureSkipVerify bool
+	versionFlag        bool
+	caCerts            stringSliceFlag
 
 	flagSet = flag.NewFlagSet("token-rp", flag.ContinueOnError)
 )
@@ -59,7 +65,11 @@ func init() {
 	flagSet.StringVar(&clientID, "client-id", "", "OpenID Connect client ID to verify")
 	flagSet.StringVar(&idpAlias, "provider-alias", "", "Keycloak provider alias to replace authorization token with")
 	flagSet.StringVar(&idpType, "provider-type", "", "Type of Keycloak IDP (currently supports openshift and github only)")
+	flagSet.StringVar(&serverCertFile, "tls-cert", "", "Path to PEM-encoded certificate to use to serve over TLS")
+	flagSet.StringVar(&serverKeyFile, "tls-key", "", "Path to PEM-encoded key to use to serve over TLS")
 	flagSet.BoolVar(&versionFlag, "version", false, "Output version and exit")
+	flagSet.BoolVar(&insecureSkipVerify, "insecure-skip-verify", false, "If insecureSkipVerify is true, TLS accepts any certificate presented by the server and any host name in that certificate. In this mode, TLS is susceptible to man-in-the-middle attacks. This should be used only for testing.")
+	flagSet.Var(&caCerts, "ca-cert", "Extra root certificate(s) that clients use when verifying server certificates")
 }
 
 func main() {
@@ -73,7 +83,7 @@ func main() {
 	}
 
 	if idpType != openshiftIDPType && idpType != githubIDPType {
-		fmt.Fprintf(os.Stderr, "Unknown provider-type: %s", idpType)
+		fmt.Fprintf(os.Stderr, "Unknown provider-type: %s\n", idpType)
 		os.Exit(2)
 	}
 	proxyTargetTokenType := "Bearer"
@@ -81,14 +91,48 @@ func main() {
 		proxyTargetTokenType = "token"
 	}
 
-	issuerURL := strings.TrimSuffix(strings.TrimSuffix(issuerURLFlag.String(), discoveryPath), "/")
+	if len(serverCertFile) > 0 && len(serverKeyFile) == 0 {
+		fmt.Fprint(os.Stderr, "tls-cert specified with no tls-key\n")
+		os.Exit(2)
+	}
+	if len(serverCertFile) == 0 && len(serverKeyFile) > 0 {
+		fmt.Fprint(os.Stderr, "tls-key specified with no tls-cert\n")
+		os.Exit(2)
+	}
 
-	providerConfig, err := oidc.FetchProviderConfig(nil, issuerURL)
+	caCertPool, err := x509.SystemCertPool()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create cert pool: %v\n", err)
+		os.Exit(2)
+	}
+
+	for _, cert := range caCerts {
+		certBytes, err := ioutil.ReadFile(cert)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to read CA certificate %s: %v\n", cert, err)
+			os.Exit(2)
+		}
+		caCertPool.AppendCertsFromPEM(certBytes)
+	}
+
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: insecureSkipVerify,
+			RootCAs:            caCertPool,
+		},
+	}
+	hc := &http.Client{
+		Transport: tr,
+	}
+
+	issuerURL := strings.TrimSuffix(strings.TrimSuffix(issuerURLFlag.String(), discoveryPath), "/")
+	providerConfig, err := oidc.FetchProviderConfig(hc, issuerURL)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	oidcClient, err := oidc.NewClient(oidc.ClientConfig{
+		HTTPClient:     hc,
 		ProviderConfig: providerConfig,
 		Credentials: oidc.ClientCredentials{
 			ID: clientID,
@@ -101,7 +145,7 @@ func main() {
 	syncStop := oidcClient.SyncProviderConfig(issuerURL)
 	defer close(syncStop)
 
-	fwd, err := forward.New()
+	fwd, err := forward.New(forward.RoundTripper(tr))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -130,7 +174,7 @@ func main() {
 			return
 		}
 
-		targetToken, err := retrieveTargetToken(issuerURL, idpAlias, idpType, token)
+		targetToken, err := retrieveTargetToken(issuerURL, idpAlias, idpType, token, hc)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
@@ -146,22 +190,34 @@ func main() {
 	s := &http.Server{
 		Addr:    ":8080",
 		Handler: handler,
+		TLSConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
 	}
-	s.ListenAndServe()
+
+	if len(serverCertFile) > 0 {
+		err = s.ListenAndServeTLS(serverCertFile, serverKeyFile)
+	} else {
+		err = s.ListenAndServe()
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Server failed: %v", err)
+	}
 }
 
 type jsonBrokerToken struct {
 	AccessToken string `json:"access_token"`
 }
 
-func retrieveTargetToken(issuerURL, idpAlias, idpType, token string) (string, error) {
+func retrieveTargetToken(issuerURL, idpAlias, idpType, token string, hc *http.Client) (string, error) {
 	tokenURL := issuerURL + "/broker/" + idpAlias + "/token"
 	tokenReq, err := http.NewRequest("GET", tokenURL, nil)
 	if err != nil {
 		return "", err
 	}
 	tokenReq.Header.Set("Authorization", "Bearer "+token)
-	tokenResp, err := http.DefaultClient.Do(tokenReq)
+	tokenResp, err := hc.Do(tokenReq)
 	if err != nil {
 		return "", err
 	}

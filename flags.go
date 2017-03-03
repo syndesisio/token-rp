@@ -51,3 +51,17 @@ func (uf *urlFlag) Set(val string) error {
 
 	return nil
 }
+
+type stringSliceFlag []string
+
+var _ flag.Value = &stringSliceFlag{}
+
+func (s *stringSliceFlag) String() string {
+	return fmt.Sprintf("%v", *s)
+}
+
+// The second method is Set(value string) error
+func (s *stringSliceFlag) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
