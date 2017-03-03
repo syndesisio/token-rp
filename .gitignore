@@ -1,2 +1,6 @@
-token-rp
+/bin
+/.go
+/.push-*
+/.container-*
+/.dockerfile-*
 vendor

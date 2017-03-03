@@ -23,12 +23,15 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	jwtmiddleware "github.com/auth0/go-jwt-middleware"
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/vulcand/oxy/forward"
+
+	"github.com/redhat-ipaas/token-rp/pkg/version"
 )
 
 var (
@@ -37,6 +40,8 @@ var (
 	clientID      string
 	idpAlias      string
 	idpType       string
+
+	versionFlag bool
 
 	flagSet = flag.NewFlagSet("token-rp", flag.ContinueOnError)
 )
@@ -54,11 +59,17 @@ func init() {
 	flagSet.StringVar(&clientID, "client-id", "", "OpenID Connect client ID to verify")
 	flagSet.StringVar(&idpAlias, "provider-alias", "", "Keycloak provider alias to replace authorization token with")
 	flagSet.StringVar(&idpType, "provider-type", "", "Type of Keycloak IDP (currently supports openshift and github only)")
+	flagSet.BoolVar(&versionFlag, "version", false, "Output version and exit")
 }
 
 func main() {
 	if err := flagSet.Parse(os.Args[1:]); err != nil {
 		os.Exit(2)
+	}
+
+	if versionFlag {
+		fmt.Printf("%s %s (%s)\n", filepath.Base(os.Args[0]), version.AppVersion, version.BuildDate)
+		os.Exit(0)
 	}
 
 	if idpType != openshiftIDPType && idpType != githubIDPType {
