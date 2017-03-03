@@ -18,8 +18,13 @@ machine:
   services:
   - docker
 
-test:                                                                           
-  override:                                                                     
+dependencies:
+  override:
+  - go get -u github.com/golang/dep/...
+  - dep ensure -update
+
+test:
+  override:
   - make build
   - make test
   - make container
