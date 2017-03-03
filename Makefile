@@ -53,22 +53,22 @@ IMAGE := $(REGISTRY)/$(BIN)
 BUILD_IMAGE ?= golang:1.8-alpine
 
 # If you want to build all binaries, see the 'all-build' rule.
-# If you want to build all containers, see the 'all-container' rule.
-# If you want to build AND push all containers, see the 'all-push' rule.
+# If you want to build all images, see the 'all-image' rule.
+# If you want to build AND push all images, see the 'all-push' rule.
 all: build
 
 build-%:
 	@$(MAKE) --no-print-directory ARCH=$* build
 
-container-%:
-	@$(MAKE) --no-print-directory ARCH=$* container
+image-%:
+	@$(MAKE) --no-print-directory ARCH=$* image
 
 push-%:
 	@$(MAKE) --no-print-directory ARCH=$* push
 
 all-build: $(addprefix build-, $(ALL_ARCH))
 
-all-container: $(addprefix container-, $(ALL_ARCH))
+all-image: $(addprefix image-, $(ALL_ARCH))
 
 all-push: $(addprefix push-, $(ALL_ARCH))
 
@@ -96,8 +96,8 @@ bin/$(ARCH)/$(BIN): build-dirs
 
 DOTFILE_IMAGE = $(subst :,_,$(subst /,_,$(IMAGE))-$(VERSION))
 
-container: .container-$(DOTFILE_IMAGE) container-name
-.container-$(DOTFILE_IMAGE): bin/$(ARCH)/$(BIN) Dockerfile.in
+image: .image-$(DOTFILE_IMAGE) image-name
+.image-$(DOTFILE_IMAGE): bin/$(ARCH)/$(BIN) Dockerfile.in
 	@sed \
 	    -e 's|ARG_BIN|$(BIN)|g' \
 	    -e 's|ARG_ARCH|$(ARCH)|g' \
@@ -106,11 +106,11 @@ container: .container-$(DOTFILE_IMAGE) container-name
 	@docker build -t $(IMAGE):$(VERSION) -f .dockerfile-$(ARCH) .
 	@docker images -q $(IMAGE):$(VERSION) > $@
 
-container-name:
-	@echo "container: $(IMAGE):$(VERSION)"
+image-name:
+	@echo "image: $(IMAGE):$(VERSION)"
 
 push: .push-$(DOTFILE_IMAGE) push-name
-.push-$(DOTFILE_IMAGE): .container-$(DOTFILE_IMAGE)
+.push-$(DOTFILE_IMAGE): .image-$(DOTFILE_IMAGE)
 ifeq ($(findstring gcr.io,$(REGISTRY)),gcr.io)
 	@gcloud docker -- push $(IMAGE):$(VERSION)
 else
@@ -142,10 +142,10 @@ build-dirs:
 	@mkdir -p bin/$(ARCH)
 	@mkdir -p .go/src/$(PKG) .go/pkg .go/bin .go/std/$(ARCH)
 
-clean: container-clean bin-clean
+clean: image-clean bin-clean
 
-container-clean:
-	rm -rf .container-* .dockerfile-* .push-*
+image-clean:
+	rm -rf .image-* .dockerfile-* .push-*
 
 bin-clean:
 	rm -rf .go bin

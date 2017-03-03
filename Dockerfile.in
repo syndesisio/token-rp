@@ -16,7 +16,7 @@ FROM ARG_FROM
 
 MAINTAINER Jimmi Dyson <jimmidyson@gmail.com>
 
-RUN (apk update && apk upgrade && apk add ca-certificates && rm -rf /var/cache/apk) || true
+RUN apk update && apk upgrade && apk add ca-certificates && rm -rf /var/cache/apk
 
 ADD bin/ARG_ARCH/ARG_BIN /ARG_BIN
 

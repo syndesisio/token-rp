@@ -1,5 +1,9 @@
 # Token Replacing Reverse Proxy
 
+[![CircleCI branch](https://img.shields.io/circleci/project/github/redhat-ipaas/token-rp/master.svg)](https://circleci.com/gh/redhat-ipaas/token-rp)
+[![license](https://img.shields.io/github/license/redhat-ipaas/token-rp.svg)](https://raw.githubusercontent.com/redhat-ipaas/token-rp/master/LICENSE)
+[![Docker Automated buil](https://img.shields.io/docker/automated/redhat-ipaas/token-rp.svg)](https://hub.docker.com/r/rhipaas/token-rp/)
+
 This repo contains a very simple reverse proxy that validates a JWT,
 uses that JWT to retrieve a token for an identity provider from Keycloak
 and sends requests to specified target using that retrieved token.
@@ -33,7 +37,12 @@ Usage of token-rp:
 ## Building
 
 ```bash
-$ go get -u -v github.com/redhat-ipaas/token-rp
-
-github.com/redhat-ipaas/token-rp (download)
+# Clone repo
+$ git clone git://github.com/redhat-ipaas/token-rp.git
+# Build binary
+$ make build
+# Run tests
+$ make test
+# Build image
+$ make image
 ```
