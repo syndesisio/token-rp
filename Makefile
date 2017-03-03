@@ -48,7 +48,7 @@ ifeq ($(ARCH),arm64)
     BASEIMAGE?=owlab/alpine-arm64:3.5
 endif
 
-IMAGE := $(REGISTRY)/$(BIN)-$(ARCH)
+IMAGE := $(REGISTRY)/$(BIN)
 
 BUILD_IMAGE ?= golang:1.8-alpine
 
