@@ -2,7 +2,6 @@
 package oidc
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/net/context"
+	"golang.org/x/net/context/ctxhttp"
 	"golang.org/x/oauth2"
 	jose "gopkg.in/square/go-jose.v2"
 )
@@ -45,12 +46,11 @@ func ClientContext(ctx context.Context, client *http.Client) context.Context {
 	return context.WithValue(ctx, oauth2.HTTPClient, client)
 }
 
-func doRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
-	client := http.DefaultClient
-	if c, ok := ctx.Value(oauth2.HTTPClient).(*http.Client); ok {
-		client = c
+func clientFromContext(ctx context.Context) *http.Client {
+	if client, ok := ctx.Value(oauth2.HTTPClient).(*http.Client); ok {
+		return client
 	}
-	return client.Do(req.WithContext(ctx))
+	return http.DefaultClient
 }
 
 // Provider represents an OpenID Connect server's configuration.
@@ -85,11 +85,7 @@ type providerJSON struct {
 // or "https://login.salesforce.com".
 func NewProvider(ctx context.Context, issuer string) (*Provider, error) {
 	wellKnown := strings.TrimSuffix(issuer, "/") + "/.well-known/openid-configuration"
-	req, err := http.NewRequest("GET", wellKnown, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := doRequest(ctx, req)
+	resp, err := ctxhttp.Get(ctx, clientFromContext(ctx), wellKnown)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +174,7 @@ func (p *Provider) UserInfo(ctx context.Context, tokenSource oauth2.TokenSource)
 	}
 	token.SetAuthHeader(req)
 
-	resp, err := doRequest(ctx, req)
+	resp, err := ctxhttp.Do(ctx, clientFromContext(ctx), req)
 	if err != nil {
 		return nil, err
 	}

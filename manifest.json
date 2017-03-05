@@ -6,7 +6,13 @@
         "github.com/coreos/go-oidc": {
             "branch": "master"
         },
+        "github.com/google/go-github": {
+            "branch": "master"
+        },
         "github.com/vulcand/oxy": {
+            "branch": "master"
+        },
+        "golang.org/x/oauth2": {
             "branch": "master"
         }
     }

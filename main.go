@@ -15,7 +15,9 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -25,16 +27,24 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	jwtmiddleware "github.com/auth0/go-jwt-middleware"
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/oidc"
+	"github.com/google/go-github/github"
 	"github.com/vulcand/oxy/forward"
-
-	"crypto/x509"
+	"golang.org/x/oauth2"
 
 	"github.com/redhat-ipaas/token-rp/pkg/version"
+)
+
+const (
+	discoveryPath = "/.well-known/openid-configuration"
+
+	githubIDPType    = "github"
+	openshiftIDPType = "openshift"
 )
 
 var (
@@ -48,15 +58,11 @@ var (
 	insecureSkipVerify bool
 	versionFlag        bool
 	caCerts            stringSliceFlag
+	identityServerFlag urlFlag
 
 	flagSet = flag.NewFlagSet("token-rp", flag.ContinueOnError)
-)
 
-const (
-	discoveryPath = "/.well-known/openid-configuration"
-
-	githubIDPType    = "github"
-	openshiftIDPType = "openshift"
+	gitRequestRegexp = regexp.MustCompile(`/(git-upload-pack|git-receive-pack|info/refs|HEAD|objects/info/alternates|objects/info/http-alternates|objects/info/packs|objects/info/[^/]*|objects/[0-9a-f]{2}/[0-9a-f]{38}|objects/pack/pack-[0-9a-f]{40}\\.pack|objects/pack/pack-[0-9a-f]{40}\\.idx)$`)
 )
 
 func init() {
@@ -70,6 +76,7 @@ func init() {
 	flagSet.BoolVar(&versionFlag, "version", false, "Output version and exit")
 	flagSet.BoolVar(&insecureSkipVerify, "insecure-skip-verify", false, "If insecureSkipVerify is true, TLS accepts any certificate presented by the server and any host name in that certificate. In this mode, TLS is susceptible to man-in-the-middle attacks. This should be used only for testing.")
 	flagSet.Var(&caCerts, "ca-cert", "Extra root certificate(s) that clients use when verifying server certificates")
+	flagSet.Var(&identityServerFlag, "identity-server-url", "URL to identity server")
 }
 
 func main() {
@@ -151,36 +158,70 @@ func main() {
 	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		token, err := jwtmiddleware.FromAuthHeader(req)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
+		isGitRequest := gitRequestRegexp.MatchString(req.URL.Path)
+
+		var token string
+
+		if isGitRequest {
+			_, token, _ = req.BasicAuth()
+		} else {
+			tokenFromHeader, err := jwtmiddleware.FromAuthHeader(req)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
+			token = tokenFromHeader
 		}
 
-		if len(token) == 0 {
-			http.Error(w, "missing bearer token", http.StatusUnauthorized)
-			return
-		}
+		if len(token) > 0 {
+			jwt, err := jose.ParseJWT(token)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
 
-		jwt, err := jose.ParseJWT(token)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
-		}
+			err = oidcClient.VerifyJWT(jwt)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
 
-		err = oidcClient.VerifyJWT(jwt)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
-		}
+			retrievedToken, err := retrieveTargetToken(issuerURL, idpAlias, idpType, token, hc)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
 
-		targetToken, err := retrieveTargetToken(issuerURL, idpAlias, idpType, token, hc)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
-		}
+			if isGitRequest {
+				if len(retrievedToken) > 0 {
+					if idpType == githubIDPType {
+						ctx := context.Background()
+						ts := oauth2.StaticTokenSource(
+							&oauth2.Token{AccessToken: retrievedToken},
+						)
+						tc := oauth2.NewClient(ctx, ts)
 
-		req.Header.Set("Authorization", proxyTargetTokenType+" "+targetToken)
+						client := github.NewClient(tc)
+						if len(identityServerFlag.Host) > 0 {
+							identityServerURL := (url.URL)(identityServerFlag)
+							client.BaseURL = &identityServerURL
+						}
+
+						// list all repositories for the authenticated user
+						user, _, err := client.Users.Get(ctx, "")
+						if err != nil {
+							fmt.Printf("%v\n", err)
+							http.Error(w, err.Error(), http.StatusUnauthorized)
+							return
+						}
+
+						req.SetBasicAuth(user.GetLogin(), retrievedToken)
+					}
+				}
+			} else {
+				req.Header.Set("Authorization", proxyTargetTokenType+" "+retrievedToken)
+			}
+		}
 
 		proxyURL := (url.URL)(proxyURLFlag)
 		req.URL = &proxyURL
