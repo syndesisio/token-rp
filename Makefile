@@ -25,7 +25,7 @@ ARCH ?= amd64
 
 # This version-strategy uses git tags to set the version string
 BUILD_DATE := $(shell date -u)
-VERSION := $(shell git describe --match 'v[0-9]*' --dirty --always)
+VERSION ?= $(shell git describe --match 'v[0-9]*' --dirty --always)
 
 #
 # This version-strategy uses a manual value to set the version string

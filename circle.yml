@@ -32,4 +32,4 @@ deployment:
     owner: redhat-ipaas
     commands:
       - docker login -e $DOCKER_EMAIL -u $DOCKER_LOGIN -p $DOCKER_PASSWORD
-      - make push
+      - make VERSION=${CIRCLE_TAG} push
