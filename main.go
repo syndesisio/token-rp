@@ -59,6 +59,7 @@ var (
 	versionFlag        bool
 	caCerts            stringSliceFlag
 	identityServerFlag urlFlag
+	verbose            bool
 
 	flagSet = flag.NewFlagSet("token-rp", flag.ContinueOnError)
 
@@ -77,6 +78,7 @@ func init() {
 	flagSet.BoolVar(&insecureSkipVerify, "insecure-skip-verify", false, "If insecureSkipVerify is true, TLS accepts any certificate presented by the server and any host name in that certificate. In this mode, TLS is susceptible to man-in-the-middle attacks. This should be used only for testing.")
 	flagSet.Var(&caCerts, "ca-cert", "Extra root certificate(s) that clients use when verifying server certificates")
 	flagSet.Var(&identityServerFlag, "identity-server-url", "URL to identity server")
+	flagSet.BoolVar(&verbose, "verbose", false, "Verbose logging.")
 }
 
 func main() {
@@ -165,7 +167,10 @@ func main() {
 		if isGitRequest {
 			_, token, _ = req.BasicAuth()
 		} else {
-			tokenFromHeader, err := jwtmiddleware.FromAuthHeader(req)
+			tokenFromHeader, err := jwtmiddleware.FromFirst(
+				tokenFromAuthHeaderWithPrefix("bearer"),
+				tokenFromAuthHeaderWithPrefix("token"),
+			)(req)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return
@@ -300,4 +305,21 @@ func retrieveTargetToken(issuerURL, idpAlias, idpType, token string, hc *http.Cl
 	}
 
 	return "", fmt.Errorf("broker token in unknown format")
+}
+
+func tokenFromAuthHeaderWithPrefix(prefix string) jwtmiddleware.TokenExtractor {
+	return func(r *http.Request) (string, error) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			return "", nil // No error, just no token
+		}
+
+		// TODO: Make this a bit more robust, parsing-wise
+		authHeaderParts := strings.Split(authHeader, " ")
+		if len(authHeaderParts) != 2 || strings.ToLower(authHeaderParts[0]) != prefix {
+			return "", nil // No error, just no token
+		}
+
+		return authHeaderParts[1], nil
+	}
 }
