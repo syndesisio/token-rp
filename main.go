@@ -37,7 +37,7 @@ import (
 	"github.com/vulcand/oxy/forward"
 	"golang.org/x/oauth2"
 
-	"github.com/redhat-ipaas/token-rp/pkg/version"
+	"github.com/syndesisio/token-rp/pkg/version"
 )
 
 const (

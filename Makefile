@@ -15,10 +15,10 @@
 BIN := token-rp
 
 # This repo's root import path (under GOPATH).
-PKG := github.com/redhat-ipaas/token-rp
+PKG := github.com/syndesisio/token-rp
 
 # Where to push the docker image.
-REGISTRY ?= rhipaas
+REGISTRY ?= syndesis
 
 # Which architecture to build - see $(ALL_ARCH) for options.
 ARCH ?= amd64
