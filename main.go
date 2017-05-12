@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	jwtmiddleware "github.com/auth0/go-jwt-middleware"
 	"github.com/coreos/go-oidc/jose"
@@ -48,18 +49,20 @@ const (
 )
 
 var (
-	issuerURLFlag      urlFlag
-	proxyURLFlag       urlFlag
-	clientID           string
-	idpAlias           string
-	idpType            string
-	serverCertFile     string
-	serverKeyFile      string
-	insecureSkipVerify bool
-	versionFlag        bool
-	caCerts            stringSliceFlag
-	identityServerFlag urlFlag
-	verbose            bool
+	issuerURLFlag               urlFlag
+	proxyURLFlag                urlFlag
+	clientID                    string
+	idpAlias                    string
+	idpType                     string
+	serverCertFile              string
+	serverKeyFile               string
+	insecureSkipVerify          bool
+	versionFlag                 bool
+	caCerts                     stringSliceFlag
+	identityServerFlag          urlFlag
+	verbose                     bool
+	providerConfigRetryInterval time.Duration
+	providerConfigRetryMax      int
 
 	flagSet = flag.NewFlagSet("token-rp", flag.ContinueOnError)
 
@@ -79,6 +82,8 @@ func init() {
 	flagSet.Var(&caCerts, "ca-cert", "Extra root certificate(s) that clients use when verifying server certificates")
 	flagSet.Var(&identityServerFlag, "identity-server-url", "URL to identity server")
 	flagSet.BoolVar(&verbose, "verbose", false, "Verbose logging.")
+	flagSet.DurationVar(&providerConfigRetryInterval, "provider-config-retry-interval", 10*time.Second, "retry interval if provider config is unavailable")
+	flagSet.IntVar(&providerConfigRetryMax, "provider-config-retry-max", -1, "max retries if provider config is unavailable")
 }
 
 func main() {
@@ -135,9 +140,18 @@ func main() {
 	}
 
 	issuerURL := strings.TrimSuffix(strings.TrimSuffix(issuerURLFlag.String(), discoveryPath), "/")
-	providerConfig, err := oidc.FetchProviderConfig(hc, issuerURL)
-	if err != nil {
-		log.Fatal(err)
+	var providerConfig oidc.ProviderConfig
+	currentAttempt := 0
+	for providerConfig.Issuer == nil {
+		providerConfig, err = oidc.FetchProviderConfig(hc, issuerURL)
+		if err != nil {
+			if 0 <= providerConfigRetryMax && providerConfigRetryMax <= currentAttempt {
+				log.Fatalf("Provider config unavailable: %v\n", err)
+			}
+			log.Printf("Provider config unavailable (retrying): %v\n", err)
+			currentAttempt++
+			<-time.After(providerConfigRetryInterval)
+		}
 	}
 
 	oidcClient, err := oidc.NewClient(oidc.ClientConfig{
