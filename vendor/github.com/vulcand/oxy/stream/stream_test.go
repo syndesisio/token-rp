@@ -13,6 +13,7 @@ import (
 	"github.com/vulcand/oxy/forward"
 	"github.com/vulcand/oxy/testutils"
 
+	log "github.com/Sirupsen/logrus"
 	. "gopkg.in/check.v1"
 	"time"
 )
@@ -22,6 +23,16 @@ func TestStream(t *testing.T) { TestingT(t) }
 type STSuite struct{}
 
 var _ = Suite(&STSuite{})
+
+type noOpNextHttpHandler struct{}
+
+func (n noOpNextHttpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {}
+
+type noOpIoWriter struct{}
+
+func (n noOpIoWriter) Write(bytes []byte) (int, error) {
+	return len(bytes), nil
+}
 
 func (s *STSuite) TestSimple(c *C) {
 	srv := testutils.NewHandler(func(w http.ResponseWriter, req *http.Request) {
@@ -312,4 +323,32 @@ func (s *STSuite) TestPreservesTLS(c *C) {
 	c.Assert(re.StatusCode, Equals, http.StatusOK)
 
 	c.Assert(t, NotNil)
+}
+
+func BenchmarkLoggingDebugLevel(b *testing.B) {
+	streamer, _ := New(noOpNextHttpHandler{})
+
+	log.SetLevel(log.DebugLevel)
+	log.SetOutput(&noOpIoWriter{}) //Make sure we don't emit a bunch of stuff on screen
+
+	for i := 0; i < b.N; i++ {
+		heavyServeHttpLoad(streamer)
+	}
+}
+
+func BenchmarkLoggingInfoLevel(b *testing.B) {
+	streamer, _ := New(noOpNextHttpHandler{})
+
+	log.SetLevel(log.InfoLevel)
+	log.SetOutput(&noOpIoWriter{}) //Make sure we don't emit a bunch of stuff on screen
+
+	for i := 0; i < b.N; i++ {
+		heavyServeHttpLoad(streamer)
+	}
+}
+
+func heavyServeHttpLoad(handler http.Handler) {
+	w := httptest.NewRecorder()
+	r := &http.Request{}
+	handler.ServeHTTP(w, r)
 }

@@ -22,7 +22,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -36,6 +35,8 @@ import (
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/google/go-github/github"
 	"github.com/vulcand/oxy/forward"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"golang.org/x/oauth2"
 
 	"github.com/syndesisio/token-rp/pkg/version"
@@ -96,9 +97,17 @@ func main() {
 		os.Exit(0)
 	}
 
+	prodConfig := zap.NewProductionConfig()
+	prodConfig.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	prodLogger, _ := prodConfig.Build()
+	defer prodLogger.Sync() // flushes buffer, if any
+	logger := prodLogger.Sugar()
+
 	if idpType != openshiftIDPType && idpType != githubIDPType {
-		fmt.Fprintf(os.Stderr, "Unknown provider-type: %s\n", idpType)
-		os.Exit(2)
+		logger.Fatalw(
+			"Unknown provider-type",
+			"providerType", idpType,
+		)
 	}
 	proxyTargetTokenType := "Bearer"
 	if idpType == githubIDPType {
@@ -146,9 +155,15 @@ func main() {
 		providerConfig, err = oidc.FetchProviderConfig(hc, issuerURL)
 		if err != nil {
 			if 0 <= providerConfigRetryMax && providerConfigRetryMax <= currentAttempt {
-				log.Fatalf("Provider config unavailable: %v\n", err)
+				logger.Fatalw(
+					"Provider config unavailable",
+					"error", err,
+				)
 			}
-			log.Printf("Provider config unavailable (retrying): %v\n", err)
+			logger.Warnw(
+				"Provider config unavailable (retrying)",
+				"error", err,
+			)
 			currentAttempt++
 			<-time.After(providerConfigRetryInterval)
 		}
@@ -162,7 +177,9 @@ func main() {
 		},
 	})
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatalw("Failed to create new OIDC client",
+			"error", err,
+		)
 	}
 
 	syncStop := oidcClient.SyncProviderConfig(issuerURL)
@@ -170,7 +187,9 @@ func main() {
 
 	fwd, err := forward.New(forward.RoundTripper(tr))
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatalw("Failed to create new proxy handler",
+			"error", err,
+		)
 	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

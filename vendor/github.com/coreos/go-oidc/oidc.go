@@ -2,16 +2,16 @@
 package oidc
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"mime"
 	"net/http"
 	"strings"
 	"time"
 
-	"golang.org/x/net/context"
-	"golang.org/x/net/context/ctxhttp"
 	"golang.org/x/oauth2"
 	jose "gopkg.in/square/go-jose.v2"
 )
@@ -46,11 +46,12 @@ func ClientContext(ctx context.Context, client *http.Client) context.Context {
 	return context.WithValue(ctx, oauth2.HTTPClient, client)
 }
 
-func clientFromContext(ctx context.Context) *http.Client {
-	if client, ok := ctx.Value(oauth2.HTTPClient).(*http.Client); ok {
-		return client
+func doRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
+	client := http.DefaultClient
+	if c, ok := ctx.Value(oauth2.HTTPClient).(*http.Client); ok {
+		client = c
 	}
-	return http.DefaultClient
+	return client.Do(req.WithContext(ctx))
 }
 
 // Provider represents an OpenID Connect server's configuration.
@@ -85,22 +86,31 @@ type providerJSON struct {
 // or "https://login.salesforce.com".
 func NewProvider(ctx context.Context, issuer string) (*Provider, error) {
 	wellKnown := strings.TrimSuffix(issuer, "/") + "/.well-known/openid-configuration"
-	resp, err := ctxhttp.Get(ctx, clientFromContext(ctx), wellKnown)
+	req, err := http.NewRequest("GET", wellKnown, nil)
 	if err != nil {
 		return nil, err
 	}
+	resp, err := doRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to read response body: %v", err)
 	}
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%s: %s", resp.Status, body)
 	}
-	defer resp.Body.Close()
+
 	var p providerJSON
-	if err := json.Unmarshal(body, &p); err != nil {
+	err = unmarshalResp(resp, body, &p)
+	if err != nil {
 		return nil, fmt.Errorf("oidc: failed to decode provider discovery object: %v", err)
 	}
+
 	if p.Issuer != issuer {
 		return nil, fmt.Errorf("oidc: issuer did not match the issuer returned by provider, expected %q got %q", issuer, p.Issuer)
 	}
@@ -174,7 +184,7 @@ func (p *Provider) UserInfo(ctx context.Context, tokenSource oauth2.TokenSource)
 	}
 	token.SetAuthHeader(req)
 
-	resp, err := ctxhttp.Do(ctx, clientFromContext(ctx), req)
+	resp, err := doRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +238,8 @@ type IDToken struct {
 
 	// Initial nonce provided during the authentication redirect.
 	//
-	// If present, this package ensures this is a valid nonce.
+	// This package does NOT provided verification on the value of this field
+	// and it's the user's responsibility to ensure it contains a valid value.
 	Nonce string
 
 	// Raw payload of the id_token.
@@ -281,13 +292,6 @@ func (a *audience) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (a audience) MarshalJSON() ([]byte, error) {
-	if len(a) == 1 {
-		return json.Marshal(a[0])
-	}
-	return json.Marshal([]string(a))
-}
-
 type jsonTime time.Time
 
 func (j *jsonTime) UnmarshalJSON(b []byte) error {
@@ -310,6 +314,15 @@ func (j *jsonTime) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (j jsonTime) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(j).Unix())
+func unmarshalResp(r *http.Response, body []byte, v interface{}) error {
+	err := json.Unmarshal(body, &v)
+	if err == nil {
+		return nil
+	}
+	ct := r.Header.Get("Content-Type")
+	mediaType, _, parseErr := mime.ParseMediaType(ct)
+	if parseErr == nil && mediaType == "application/json" {
+		return fmt.Errorf("got Content-Type = application/json, but could not unmarshal as JSON: %v", err)
+	}
+	return fmt.Errorf("expected Content-Type = application/json, got %q: %v", ct, err)
 }

@@ -1,0 +1,15 @@
+[[constraint]]
+  branch = "master"
+  name = "github.com/auth0/go-jwt-middleware"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/vulcand/oxy"
+
+[[constraint]]
+  branch = "master"
+  name = "golang.org/x/oauth2"
+
+[[constraint]]
+  version = "^1"
+  name = "go.uber.org/zap"
