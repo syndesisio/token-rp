@@ -125,15 +125,20 @@ func main() {
 
 	caCertPool, err := x509.SystemCertPool()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create cert pool: %v\n", err)
-		os.Exit(2)
+		logger.Fatalw(
+			"Failed to create cert pool",
+			"error", err,
+		)
 	}
 
 	for _, cert := range caCerts {
 		certBytes, err := ioutil.ReadFile(cert)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to read CA certificate %s: %v\n", cert, err)
-			os.Exit(2)
+			logger.Fatalw(
+				"Failed to read CA certificate",
+				"file", cert,
+				"error", err,
+			)
 		}
 		caCertPool.AppendCertsFromPEM(certBytes)
 	}
@@ -158,11 +163,13 @@ func main() {
 				logger.Fatalw(
 					"Provider config unavailable",
 					"error", err,
+					"issuerURL", issuerURL,
 				)
 			}
 			logger.Warnw(
 				"Provider config unavailable (retrying)",
 				"error", err,
+				"issuerURL", issuerURL,
 			)
 			currentAttempt++
 			<-time.After(providerConfigRetryInterval)
@@ -177,7 +184,8 @@ func main() {
 		},
 	})
 	if err != nil {
-		logger.Fatalw("Failed to create new OIDC client",
+		logger.Fatalw(
+			"Failed to create new OIDC client",
 			"error", err,
 		)
 	}
@@ -187,7 +195,8 @@ func main() {
 
 	fwd, err := forward.New(forward.RoundTripper(tr))
 	if err != nil {
-		logger.Fatalw("Failed to create new proxy handler",
+		logger.Fatalw(
+			"Failed to create new proxy handler",
 			"error", err,
 		)
 	}
