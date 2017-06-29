@@ -22,6 +22,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -281,6 +282,7 @@ func main() {
 		TLSConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
 		},
+		ErrorLog: log.New(&nopWriter{}, "", log.LstdFlags),
 	}
 
 	if len(serverCertFile) > 0 {
@@ -364,4 +366,11 @@ func tokenFromAuthHeaderWithPrefix(prefix string) jwtmiddleware.TokenExtractor {
 
 		return authHeaderParts[1], nil
 	}
+}
+
+type nopWriter struct {
+}
+
+func (w *nopWriter) Write(b []byte) (int, error) {
+	return len(b), nil
 }
