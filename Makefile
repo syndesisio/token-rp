@@ -25,11 +25,10 @@ ARCH ?= amd64
 
 # This version-strategy uses git tags to set the version string
 BUILD_DATE := $(shell date -u)
-VERSION ?= $(shell git describe --match 'v[0-9]*' --dirty --always)
 
 #
 # This version-strategy uses a manual value to set the version string
-#VERSION := 1.2.3
+VERSION := 1.2.3
 
 ###
 ### These variables should not need tweaking.
@@ -77,7 +76,7 @@ build: bin/$(ARCH)/$(BIN)
 bin/$(ARCH)/$(BIN): build-dirs
 	@echo "building: $@"
 	@docker run                                                              \
-	    -ti                                                                  \
+	    -i                                                                  \
 	    -u $$(id -u):$$(id -g)                                               \
 	    -v $$(pwd)/.go:/go:Z                                                 \
 	    -v $$(pwd):/go/src/$(PKG):Z                                          \
@@ -126,7 +125,7 @@ version:
 
 test: build-dirs
 	@docker run                                                              \
-	    -ti                                                                  \
+	    -i                                                                  \
 	    -u $$(id -u):$$(id -g)                                               \
 	    -v $$(pwd)/.go:/go:Z                                                 \
 	    -v $$(pwd):/go/src/$(PKG):Z                                          \
